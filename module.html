@@ -1,0 +1,317 @@
+Option Explicit '変数の宣言を強制する
+
+'設定用変数
+Public commissionPar As Long '手数料率
+Public inputType As String '入力種別
+Public transaction As String '取引状態
+'カレンダー用変数
+Public clndr_date As Date 'テキストボックスの値を格納する変数
+Public clndr_flg As Boolean 'カレンダーがクリックされたか判定するフラグ
+'分析用
+Type ex
+  day As Date '日付
+  price As Long  '販売価格
+  profit As Long  '純利益
+End Type
+
+Sub putCalenderDate(ByVal tgtTextBox As MSForms.TextBox)
+  clndr_flg = False 'フラグリセット
+  If IsDate(tgtTextBox) = False Then '日付が入ってなければ
+    clndr_date = Date '今日の日付を格納
+  Else
+    clndr_date = tgtTextBox 'テキストボックスの日付を格納
+  End If
+  CalenderForm.Show 'カレンダーを開く
+  If clndr_flg = True Then tgtTextBox = Format(clndr_date, "yyyy/mm/dd") 'クリックされた日付を上書き
+End Sub
+
+Sub ChgToJpg()
+Dim TGT, fPath, fName, NewName, Exprt
+TGT = Application.GetOpenFilename(, , , , False)
+If TGT = False Then Exit Sub
+Application.ScreenUpdating = False
+ActiveSheet.Pictures.Insert(TGT).Select
+fPath = Left(TGT, InStrRev(TGT, "\"))
+fName = Replace(TGT, fPath, "")
+fName = Left(fName, InStrRev(fName, ".") - 1)
+Selection.name = fName
+NewName = fPath & fName
+Exprt = Export2Jpg(NewName & ".jpg")
+ActiveSheet.Shapes(fName).Delete
+Application.ScreenUpdating = True
+End Sub
+
+Function Export2Jpg(ByVal FF As String, Optional ByVal obj As Object) As Long
+If obj Is Nothing Then Set obj = Selection
+obj.CopyPicture xlScreen, xlBitmap
+With ActiveSheet.ChartObjects.Add(obj.Left, obj.Top, obj.Width, obj.Height).Chart
+.Paste
+Application.CutCopyMode = False
+.Export FF
+.Parent.Delete
+End With
+End Function
+Sub PicSizeChange(myPath, fName)
+    Dim suihei As Integer '幅（水平方向）の設定値
+
+'    myPath = ThisWorkbook.Path & "\picture\" '画像の入っているフォルダー
+'    fName = "pose_reiwa_woman.jpg " 'jpgファイルを取得
+    suihei = 160
+    Shell "C:\Windows\system32\mspaint.exe" & " """ & myPath & fName & "", vbNormalFocus
+    Application.Wait Now + TimeValue("0:00:02")    '2秒待つ
+
+    SendKeys "%H"    'Alt+H（アクセス キー）
+    SendKeys "RE"    'R、E（アクセス キー）
+    SendKeys "{DOWN}"    '↓ ［ピクセル］オプション選択
+    Application.Wait Now + TimeValue("0:00:01")
+    SendKeys "{TAB}"    'Tab
+    SendKeys suihei    '水平設定
+    SendKeys "{Enter}"    'ダイアログ ボックス確定
+
+    SendKeys "%{F4}"    'アプリ終了　Alt+F4
+    SendKeys "{Enter}"    '保存確定"
+
+    SendKeys "{NUMLOCK}"
+
+End Sub
+'引数で渡された配列にチェック対象の値が存在するかを判定します。
+'引数1：配列
+'引数2：チェック値
+'戻り値：真偽 ※存在すればTrue
+Function Is_ExistArray(ArrTarget() As Variant, CheckValue As Variant) As Boolean
+    Dim i As Integer
+        Is_ExistArray = False
+        For i = LBound(ArrTarget) To UBound(ArrTarget)
+            If ArrTarget(i) = CheckValue Then
+                Is_ExistArray = True
+                Exit For
+            End If
+        Next
+End Function
+'遅いソート
+Function InsertionSort(ByRef dataList As Variant, ByVal low As Long, ByVal high As Long)
+
+    Dim i As Variant
+    Dim k As Variant
+    Dim temp As Variant
+
+    For i = low + 1 To high
+        temp = dataList(i)
+        If dataList(i - 1) > temp Then
+            k = i
+
+            Do While k > low
+                If dataList(k - 1) <= temp Then
+                    Exit Do
+                End If
+
+                dataList(k) = dataList(k - 1)
+                k = k - 1
+            Loop
+
+            dataList(k) = temp
+        End If
+    Next
+
+    InsertionSort = dataList
+
+End Function
+'早いソート
+Function QuickSort(ByRef dataList As Variant, ByVal low As Long, ByVal high As Long)
+
+    Dim l As Long
+    Dim r As Long
+    l = low
+    r = high
+
+    Dim pivot As Variant
+    pivot = dataList((low + high) \ 2)
+
+    Dim temp As Variant
+
+    Do While (l <= r)
+        Do While (dataList(l) < pivot And l < high)
+            l = l + 1
+        Loop
+        Do While (pivot < dataList(r) And r > low)
+            r = r - 1
+        Loop
+
+        If (l <= r) Then
+            temp = dataList(l)
+            dataList(l) = dataList(r)
+            dataList(r) = temp
+            l = l + 1
+            r = r - 1
+        End If
+    Loop
+
+    If (low < r) Then
+        Call QuickSort(dataList, low, r)
+    End If
+    If (l < high) Then
+        Call QuickSort(dataList, l, high)
+    End If
+
+  QuickSort = dataList
+
+End Function
+Sub WorkbookSave()
+    Application.DisplayAlerts = False 'メッセージを一時的に非表示
+    ThisWorkbook.Save
+    Application.DisplayAlerts = True
+End Sub
+Private Sub closetest()
+Dim test
+Dim v()
+
+v = Array("A", "B")
+test = Is_ExistArray(v, "A")
+Debug.Print test
+
+End Sub
+
+Sub test()
+
+With Sheets("分析")
+
+Dim setYear As Long
+Dim setMonth As Long
+Dim yearCol, monthCol
+Dim y, m
+
+setYear = 2021
+setMonth = 1
+  yearCol = .Rows("1").Find(setYear & "年").Column
+  monthCol = .Rows("2").Find(setMonth & "月").Column
+  y = .Cells(1, monthCol).Value
+  m = Int(Left(y, Len(y) - 1))
+End With
+
+End Sub
+
+Sub GraphLoad()
+
+Dim i
+Dim col, maxRow
+Dim cmpList() As ex
+Dim setYear() As Variant, setMonth() As Variant
+
+setYear = Array(2020, 2022)
+setMonth = Array(1, 4)
+
+With Sheets("売上表")
+
+  col = .Rows("1").Find("完了日").Column
+  maxRow = .Cells(Rows.Count, col).End(xlUp).row
+  ReDim cmpList(maxRow - 2)
+  For i = 0 To maxRow - 2
+    cmpList(i).day = .Cells(i + 2, col)
+    cmpList(i).price = .Cells(i + 2, col + 1)
+    cmpList(i).profit = .Cells(i + 2, col + 7)
+  Next i
+
+End With
+
+'売上表からデータ取得----------------------------------------------------------------
+
+Dim thisYear, thisMonth
+Dim cn, hitCount
+Dim resultList() As ex
+Dim sumPrice, sumCost, sumProfit
+Dim startDay As Date, endDay As Date
+Dim lastLoop As Boolean: lastLoop = False  '月最終ループ確認
+Dim lastJudge As Boolean: lastJudge = False  '年最終ループ確認
+
+If setYear(0) = setYear(1) And setMonth(0) = setMonth(1) Then lastLoop = True
+
+thisMonth = setMonth(0)
+
+For thisYear = setYear(0) To setYear(1)
+  Do While setMonth(1) <> thisMonth Or setYear(1) <> thisYear Or lastLoop = True
+  If lastJudge = True Then lastLoop = False: lastJudge = False
+
+  With Sheets("売上表")
+      startDay = DateSerial(thisYear, thisMonth, 1)
+      endDay = DateSerial(thisYear, thisMonth + 1, 0)
+
+      hitCount = WorksheetFunction.CountIfs(.Columns(col), ">=" & startDay, _
+                                            .Columns(col), "<=" & endDay)
+
+      If hitCount = 0 Then
+        sumPrice = 0: sumCost = 0: sumProfit = 0: GoTo OutPut
+      End If
+
+      ReDim resultList(hitCount - 1)
+      cn = 0
+      sumPrice = 0: sumCost = 0: sumProfit = 0
+      For i = LBound(cmpList) To UBound(cmpList)
+        If cmpList(i).day >= startDay And cmpList(i).day <= endDay Then
+          resultList(cn).day = cmpList(i).day
+          resultList(cn).price = cmpList(i).price
+          resultList(cn).profit = cmpList(i).profit
+          cn = cn + 1
+        End If
+      Next i
+
+      For i = LBound(resultList) To UBound(resultList)
+        sumPrice = sumPrice + resultList(i).price
+        sumProfit = sumProfit + resultList(i).profit
+      Next i
+
+      sumCost = sumPrice - sumProfit
+    End With
+
+'分析に書き出し-----------------------------------------------------------------------
+
+OutPut:
+
+    Dim monthCol As Long, yearCol As Long ', yearDeviation As Long
+
+    With Sheets("分析")
+
+      yearCol = .Rows("1").Find(thisYear & "年", LookAt:=xlWhole).Column
+      monthCol = .Rows("2").Find(thisMonth & "月", LookAt:=xlWhole).Column
+    '  yearDeviation = setYear(ty) - Int(Left(.Cells(1, monthCol), Len(.Cells(1, monthCol)) - 1))
+      .Cells(3, yearCol + thisMonth - 1).Value = sumPrice
+      .Cells(4, yearCol + thisMonth - 1).Value = sumCost
+      .Cells(5, yearCol + thisMonth - 1).Value = sumProfit '+ (yearDeviation * 12)).Value
+
+    End With
+
+    If setMonth(1) = thisMonth And setYear(1) = thisYear Or thisMonth = 12 Then lastLoop = True
+
+    If thisMonth < 12 Then
+      thisMonth = thisMonth + 1
+    Else
+      thisMonth = 1
+    End If
+
+    If lastLoop = True Then GoTo Continue
+
+    If setMonth(1) = thisMonth And setYear(1) = thisYear Then lastLoop = True
+
+  Loop
+
+Continue:
+  '最終要素か確認
+  If setMonth(1) <> thisMonth And setYear(1) <> thisYear Then
+    lastLoop = False
+  Else
+    lastJudge = True
+  End If
+
+Next thisYear
+
+'グラフの描画--------------------------------------------------------------------------
+
+End Sub
+
+Sub GraphReset()
+  With Sheets("分析")
+    .Rows("3:5").ClearContents
+    .Range("A3") = "販売価格"
+    .Range("A4") = "コスト"
+    .Range("A5") = "純利益"
+  End With
+End Sub
