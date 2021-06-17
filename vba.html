@@ -1,0 +1,786 @@
+Public data As Variant 'リストボックスデータ
+Public tmp1, tmp2 '取引ステータス、検索テキスト　保存用
+Public myPath As String '画像フォルダパス
+Public filePath As String '画像ファイルパス
+Public picFlag As Boolean
+Public eventFlag As Boolean 'イベント有効無効
+'Public clickFlag1 As Boolean  '初回クリック確認
+Private CheckCollection As Collection 'テキストボックス　クラス設定用　コレクションの宣言
+
+'初期設定
+Private Sub InitialSetting()
+'Dim data
+Dim CtrlItem
+Dim exclusionList
+
+eventFlag = False
+Save.Visible = False
+PicInsert.Visible = False
+PicDelete.Visible = False
+Submit.Visible = True
+Edit.Visible = False
+Copy.Visible = False
+Delete.Visible = False
+ListBox1.Locked = False
+'カレンダー
+CommandButton1.Visible = False
+CommandButton2.Visible = False
+CommandButton3.Visible = False
+'ラベル
+ナンバー.Caption = ""
+手数料.Caption = ""
+純利益.Caption = ""
+操作.Caption = ""
+'テキスト、コンボ
+検索.Text = ""
+取引ステータス.Text = "全て"
+'画像
+filePath = ""
+myPath = ThisWorkbook.Path & "\picture\"
+Image1.Picture = LoadPicture("")
+
+'除外
+exclusionList = Array("検索", "並び順", "昇降", "取引ステータス")
+exclusionList = Join(exclusionList, "")
+
+'ロック解除、施錠
+For Each CtrlItem In Controls
+    If TypeName(CtrlItem) = "TextBox" Or TypeName(CtrlItem) = "ComboBox" Then
+        If InStr(exclusionList, CtrlItem.name) = 0 Then
+            CtrlItem.Locked = True
+            CtrlItem.BackColor = RGB(230, 230, 230)
+            CtrlItem.Value = ""
+        Else
+            CtrlItem.Locked = False
+            CtrlItem.BackColor = RGB(255, 255, 255)
+        End If
+    End If
+Next CtrlItem
+
+'リストの作成
+With Sheets("売上表")
+    data = .Range("A1").CurrentRegion
+End With
+
+With ListBox1
+    .ColumnCount = -1
+    .ColumnWidths = "30,50,60,60,60,0,0,60,50,0,0,0,0,0,0,0,0,0"
+    .List = data
+End With
+
+Dim v() As Variant, vv
+Dim i As Long
+Dim maxRow As Long
+Dim cn As Long
+
+'コンボボックスの作成
+cn = 0
+ReDim v(cn)
+
+種類.Clear
+With Sheets("売上表")
+    maxRow = .Cells(Rows.Count, 1).End(xlUp).row
+    For i = 2 To maxRow
+        vv = Is_ExistArray(v, .Range("D" & i).Value)
+        If vv = False Then
+            ReDim Preserve v(cn)
+            v(cn) = .Range("D" & i).Value
+            cn = cn + 1
+        End If
+    Next i
+End With
+
+v = QuickSort(v, LBound(v), UBound(v))
+
+For i = LBound(v) To UBound(v)
+    種類.AddItem v(i)
+Next
+
+If Reload.Caption = "キャンセル" Then
+    取引ステータス.Text = tmp1
+    検索.Text = tmp2
+    Call Search_Click
+End If
+
+'コマンドボタン
+Reload.Caption = "初期化"
+
+eventFlag = True
+
+End Sub
+
+'Formが開く時
+Private Sub UserForm_Initialize()
+Dim Setting1, Setting2, Setting3
+Dim comboData, Item
+
+'----------初期設定----------
+
+Set CheckCollection = New Collection 'コレクション生成
+Dim Ctrl As Control 'コントロール変数の宣言
+Dim obj As Class1 'インスタンス変数を宣言
+For Each Ctrl In Me.Controls  'フォーム内のコントロールをループ
+    If TypeName(Ctrl) = "TextBox" Then  'コントロールのタイプがテキストボックスだったら
+        Set obj = New Class1 'インスタンスの生成
+        obj.SetCtrl Ctrl 'コントロールをセット
+        CheckCollection.Add obj 'コレクションへ追加
+        Set obj = Nothing 'インスタンス破棄
+    End If
+Next
+
+'----------------------------
+
+'設定を作成
+With Sheets("設定")
+    Set Setting1 = .Columns("A").Find("手数料率", LookAt:=xlWhole)
+    Set Setting2 = .Columns("A").Find("入力種別", LookAt:=xlWhole)
+    Set Setting3 = .Columns("A").Find("取引状態", LookAt:=xlWhole)
+    commissionPar = .Cells(Setting1.row, 2) * 100 '手数料率
+    inputType = .Cells(Setting2.row, 2) '入力種別
+    transaction = .Cells(Setting3.row, 2) '取引状態
+End With
+
+comboData = Array("全て", "出品前", "出品中", "入金待ち", "発送準備中", "評価待ち", "取引完了")
+For Each Item In comboData
+    取引ステータス.AddItem Item
+Next
+
+comboData = Array("売上", "経費")
+For Each Item In comboData
+    UserForm1.入力種別.AddItem Item
+Next
+
+comboData = Array("出品前", "出品中", "入金待ち", "発送準備中", "評価待ち", "取引完了")
+For Each Item In comboData
+    UserForm1.取引状態.AddItem Item
+Next
+
+comboData = Array("ID", "入力種別", "完了日", "作成日", "更新日", "商品名", "販売価格")
+For Each Item In comboData
+    並び順.AddItem Item
+Next
+
+comboData = Array("昇順", "降順")
+For Each Item In comboData
+    昇降.AddItem Item
+Next
+
+With Sheets("設定")
+    並び順.Text = .Range("B4")
+    昇降.Text = .Range("B5")
+End With
+
+'Call InitialSettingを含む
+
+End Sub
+
+'Formが閉じる時
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+Dim dFile
+    '並び順をセルに保存
+    With Sheets("設定")
+        .Range("B4") = 並び順.Text
+        .Range("B5") = 昇降.Text
+    End With
+
+    '保存していない画像ファイル削除
+    dFile = Dir(myPath & "new*.jpg")
+    Do While Len(dFile)
+        If dFile <> "" Then Kill myPath & dFile
+        dFile = Dir()
+    Loop
+End Sub
+
+'画像削除
+Private Sub PicDelete_Click()
+Dim findRng As Range
+Dim ro As Long
+Dim Q
+
+Q = MsgBox("画像を削除しますか？", vbYesNo + vbQuestion)
+If Q = vbNo Then Exit Sub
+
+If filePath <> "" Then
+    picFlag = False
+End If
+
+Image1.Picture = LoadPicture("")
+画像.Visible = True
+PicDelete.Visible = False
+PicInsert.Caption = "画像挿入"
+
+End Sub
+Private Sub PicDeleter()
+    With Sheets("売上表")
+        If Dir(filePath) <> "" Then Kill filePath
+        Set findRng = .Columns("A").Find(ナンバー.Caption, LookAt:=xlWhole)
+        row = findRng.row
+        .Cells(row, 18) = ""
+    End With
+End Sub
+
+'画像挿入
+Private Sub PicInsert_Click()
+Dim myFile, fPath, fName
+
+fPath = Application.GetOpenFilename("画像ファイル,*.jpg")
+If fPath = False Then Exit Sub
+
+Image1.Picture = LoadPicture("")
+画像.Visible = True
+画像.Caption = "挿入中..."
+
+Dim fso As FileSystemObject
+Set fso = New FileSystemObject ' インスタンス化
+
+fName = "new" & ナンバー.Caption & ".jpg"
+filePath = myPath & fName
+
+FileCopy fPath, filePath
+If Dir("C:\Windows\system32\mspaint.exe") <> "" Then
+'    Call PicSizeChange(myPath, fName)　'要改善
+'    Application.Wait Now + TimeValue("0:00:01") '1秒待つ
+End If
+
+画像.Caption = "NoImage"
+画像.Visible = False
+Image1.Picture = LoadPicture(filePath)
+PicDelete.Visible = True
+picFlag = True
+
+End Sub
+
+'売上リスト
+Private Sub ListBox1_Click()
+With ListBox1
+
+ID = .ListIndex
+
+If ID < 1 Then Exit Sub
+
+Edit.Visible = True
+Delete.Visible = True
+Copy.Visible = True
+
+ナンバー.Caption = .List(ID, 0)
+入力種別.Text = .List(ID, 1)
+商品名.Text = .List(ID, 2)
+種類.Text = .List(ID, 3)
+取引状態.Text = .List(ID, 4)
+出品日.Text = .List(ID, 5)
+発送日.Text = .List(ID, 6)
+完了日.Text = .List(ID, 7)
+販売価格.Text = .List(ID, 8)
+仕入額.Text = .List(ID, 9)
+送料.Text = .List(ID, 10)
+梱包資材費.Text = .List(ID, 11)
+手数料率.Text = .List(ID, 12) * 100
+手数料.Caption = Int((販売価格.Text * 手数料率.Text) / 100)
+純利益.Caption = 販売価格.Text - (Int(仕入額.Text) + Int(送料.Text) + Int(梱包資材費.Text) + Int(手数料.Caption))
+
+filePath = .List(ID, 17)
+
+If filePath <> "" Then
+    画像.Visible = False
+Else
+    画像.Visible = True
+End If
+
+Image1.Picture = LoadPicture(filePath)
+picFlag = True
+
+End With
+End Sub
+
+'保存
+Private Sub Save_Click()
+Dim row As Long
+Dim errList()
+Dim findRng As Range
+Dim exclusionList
+Dim Q
+
+Q = MsgBox("保存しますか？", vbYesNo + vbQuestion)
+If Q = vbNo Then Exit Sub
+
+'背景色リセット？
+'Call SubmitEditCopySetting(Left(操作.Caption, Len(操作.Caption) - 3))
+
+'除外
+exclusionList = Array("検索")
+exclusionList = Join(exclusionList, "")
+'空白のセルが存在する場合、赤にしてエラー表示
+Count = 0
+For Each Ctrl In Controls
+    If TypeName(Ctrl) = "TextBox" Then
+        If Ctrl.Value = "" And InStr(exclusionList, Ctrl.name) = 0 Then
+            Ctrl.BackColor = RGB(255, 0, 0)
+            ReDim Preserve errList(Count)
+            errList(Count) = Ctrl.name
+            Count = Count + 1
+        End If
+    End If
+Next Ctrl
+
+On Error GoTo Submit
+
+If UBound(errList) >= 0 Then
+    errmsg = Join(errList, "、")
+    商品名.SetFocus
+    MsgBox errmsg & "を入力してください｡"
+    Exit Sub
+End If
+
+Submit:
+
+With Sheets("売上表")
+
+  Set findRng = .Columns("A").Find(ナンバー.Caption, LookAt:=xlWhole)
+  If findRng Is Nothing Then
+      '新規作成の時
+      row = .Cells(Rows.Count, 1).End(xlUp).row + 1
+      .Cells(row, 16) = Format(Date, "yyyy/mm/dd") '作成日
+      .Cells(row, 17) = Format(Date, "yyyy/mm/dd") '更新日
+  Else
+      '編集の時
+      row = findRng.row
+      .Cells(row, 17) = Format(Date, "yyyy/mm/dd") '更新日
+  End If
+
+  If 種類.Text = "" Then 種類.Text = "未分類"
+
+      '各項目を保存
+      .Cells(row, 1) = ナンバー.Caption
+      .Cells(row, 2) = 入力種別.Text
+      .Cells(row, 3) = 商品名.Text
+      .Cells(row, 4) = 種類.Text
+      .Cells(row, 5) = 取引状態.Text
+      .Cells(row, 6) = 出品日.Text
+      .Cells(row, 7) = 発送日.Text
+      .Cells(row, 8) = 完了日.Text
+      .Cells(row, 9) = 販売価格.Text
+      .Cells(row, 10) = 仕入額.Text
+      .Cells(row, 11) = 送料.Text
+      .Cells(row, 12) = 梱包資材費.Text
+      .Cells(row, 13) = 手数料率.Text / 100
+      .Cells(row, 14) = "=I" & row & "*M" & row '手数料.Caption
+      .Cells(row, 15) = "=I" & row & "-SUM(J" & row & ",K" & row & ",L" & row & ",N" & row & ")" '純利益.Caption
+
+      '旧画像の削除・新画像の名前変更
+      Dim fName
+      Dim fso As FileSystemObject
+      Set fso = New FileSystemObject
+      fName = ナンバー.Caption & ".jpg"
+
+      If filePath <> "" Then
+          '画像削除されている時
+          If picFlag = False Then
+              Call PicDeleter
+          Else
+              If Dir(myPath & "new" & fName) <> "" Then
+                  '旧画像削除
+                  If Dir(myPath & fName) <> "" Then Kill myPath & fName
+                  Set f = fso.GetFile(filePath)
+                  f.name = fName
+                  .Cells(row, 18) = "=(LEFT(@CELL( ""filename"",$A$1),FIND( ""["",@CELL( ""filename"",$A$1))-1)) & ""picture\""&""" & f.name & """" 'myPath & f.Name
+              End If
+          End If
+      End If
+
+  MsgBox "保存が完了しました。"
+
+End With
+
+Call orderChange("", "") 'Call InitialSettingを含む
+
+'Call WorkbookSave ’本番用
+
+End Sub
+
+'新規登録
+Private Sub Submit_Click()
+Dim Ctrl As Control
+
+Call SubmitEditCopySetting("新規")
+
+eventFlag = False
+'clickFlag1 = False
+Image1.Picture = LoadPicture("")
+
+'テキストボックスをクリアして白に
+For Each Ctrl In Controls
+    If TypeName(Ctrl) = "TextBox" Then
+        Ctrl.Value = ""
+        Ctrl.BackColor = RGB(255, 255, 255)
+    End If
+Next Ctrl
+
+ナンバー.Caption = Application.WorksheetFunction.Max(Columns("A:A")) + 1
+入力種別.Text = inputType
+取引状態.Text = transaction
+種類.Text = ""
+出品日.Text = Format(Date, "yyyy/mm/dd")
+発送日.Text = Format(Date, "yyyy/mm/dd")
+完了日.Text = Format(Date, "yyyy/mm/dd")
+販売価格.Text = 0
+仕入額.Text = 0
+送料.Text = 0
+梱包資材費.Text = 0
+手数料率.Text = commissionPar '%
+手数料.Caption = 0
+純利益.Caption = 0
+
+eventFlag = True
+
+End Sub
+
+'編集
+Private Sub Edit_Click()
+
+Call SubmitEditCopySetting("編集")
+
+End Sub
+
+'複製
+Private Sub Copy_Click()
+Dim maxID, fPath, fName
+
+Call SubmitEditCopySetting("複製")
+
+maxID = Application.WorksheetFunction.Max(Columns("A:A")) + 1
+
+'myPath = ThisWorkbook.Path & "\picture\"
+fPath = myPath & ナンバー.Caption & ".jpg"
+fName = "new" & maxID & ".jpg"
+filePath = myPath & fName
+If Dir(fPath) <> "" Then FileCopy fPath, filePath
+
+ナンバー.Caption = maxID
+出品日.Text = Format(Date, "yyyy/mm/dd")
+発送日.Text = Format(Date, "yyyy/mm/dd")
+完了日.Text = Format(Date, "yyyy/mm/dd")
+
+End Sub
+
+'削除
+Private Sub Delete_Click()
+Dim row As Long
+Dim Q
+Dim dFile
+
+Q = MsgBox("データを削除しますか？ " & vbCrLf & "（元に戻せません）", vbYesNo + vbExclamation)
+If Q = vbNo Then Exit Sub
+
+With Sheets("売上表")
+    row = .Columns("A").Find(ナンバー.Caption, LookAt:=xlWhole).row
+    .Rows(row).Delete
+    '画像の削除
+    dFile = Dir(myPath & ナンバー.Caption & ".jpg")
+    If dFile <> "" Then Kill myPath & dFile
+End With
+
+Call InitialSetting
+
+'Call WorkbookSave ’本番用
+
+End Sub
+
+'初期化
+Private Sub Reload_Click()
+    Call InitialSetting
+End Sub
+
+'設定
+Private Sub Setting_Click()
+    SettingForm.Show
+End Sub
+
+'分析
+Private Sub analysis_Click()
+    Call GraphReset
+    Call GraphLoad
+    Sheets("分析").Activate
+    Unload UserForm1
+End Sub
+
+'新規登録、編集、複製　共通項目
+Private Sub SubmitEditCopySetting(mode)
+Dim CtrlItem
+Dim exclusionList
+
+Save.Visible = True
+PicInsert.Visible = True
+Submit.Visible = False
+Edit.Visible = False
+Copy.Visible = False
+Delete.Visible = False
+ListBox1.Locked = True
+操作.Caption = mode & "作成中"
+Reload.Caption = "キャンセル"
+'カレンダー
+CommandButton1.Visible = True
+CommandButton2.Visible = True
+CommandButton3.Visible = True
+'絞り込み保存用
+tmp1 = 取引ステータス.Text
+tmp2 = 検索.Text
+
+If filePath = "" Then
+  PicInsert.Caption = "画像挿入"
+Else
+  PicInsert.Caption = "画像変換"
+  PicDelete.Visible = True
+End If
+
+商品名.SetFocus
+
+'除外
+exclusionList = Array("出品日", "発送日", "完了日", "検索", "並び順", "昇降", "取引ステータス")
+exclusionList = Join(exclusionList, "")
+
+'ロック解除、施錠
+For Each CtrlItem In Controls
+    If TypeName(CtrlItem) = "TextBox" Or TypeName(CtrlItem) = "ComboBox" Then
+        If InStr(exclusionList, CtrlItem.name) = 0 Then
+            CtrlItem.Locked = False
+            CtrlItem.BackColor = RGB(255, 255, 255)
+        Else
+            CtrlItem.Locked = True
+            CtrlItem.BackColor = RGB(230, 230, 230)
+        End If
+    End If
+Next CtrlItem
+
+End Sub
+
+Private Sub CommandButton1_Click()
+  Call putCalenderDate(Me.出品日)
+End Sub
+
+Private Sub CommandButton2_Click()
+  Call putCalenderDate(Me.発送日)
+End Sub
+
+Private Sub CommandButton3_Click()
+  Call putCalenderDate(Me.完了日)
+End Sub
+
+Private Sub 商品名_Change()
+    商品名.Text = strCheck(True, 商品名.Text, 20)
+End Sub
+
+Private Sub 種類_Change()
+    種類.Text = strCheck(True, 種類.Text, 20)
+End Sub
+
+Private Sub 出品日_Change()
+'    出品日.Text = dayCheck(出品日.Text)
+'    出品日.Text = strCheck(False, 出品日.Text, 10)
+End Sub
+
+Private Sub 発送日_Change()
+'    発送日.Text = dayCheck(発送日.Text)
+'    発送日.Text = strCheck(False, 発送日.Text, 10)
+End Sub
+
+Private Sub 完了日_Change()
+'    完了日.Text = dayCheck(完了日.Text)
+'    完了日.Text = strCheck(False, 完了日.Text, 10)
+End Sub
+
+Private Sub 販売価格_Change()
+    Call TextBoxChange("販売価格")
+End Sub
+
+Private Sub 仕入額_Change()
+    Call TextBoxChange("仕入額")
+End Sub
+
+Private Sub 送料_Change()
+    Call TextBoxChange("送料")
+End Sub
+
+Private Sub 梱包資材費_Change()
+    Call TextBoxChange("梱包資材費")
+End Sub
+
+Private Sub 手数料率_Change()
+    Call TextBoxChange("手数料率")
+End Sub
+
+'テキストボックスに変更があった時
+Private Sub TextBoxChange(txtbox)
+'    Controls(txtbox).Text = numCheck(Controls(txtbox).Text)
+    Controls(txtbox).Text = strCheck(True, Controls(txtbox).Text, 13)
+    If Controls(txtbox).Text = "" Then Controls(txtbox).Text = 0
+    If Len(Controls(txtbox).Text) = 2 And Left(Controls(txtbox).Text, 1) = 0 Then _
+    Controls(txtbox).Text = Right(Controls(txtbox).Text, Len(Controls(txtbox).Text) - 1)
+    Call Recalculation
+End Sub
+
+'再計算
+Private Sub Recalculation()
+If eventFlag = True Then
+    If 販売価格.Text <> "" And 手数料率.Text <> "" Then
+        手数料.Caption = Int((販売価格.Text * 手数料率.Text) / 100)
+        If 仕入額.Text <> "" And 送料.Text <> "" And 梱包資材費.Text <> "" Then
+            純利益.Caption = 販売価格.Text - (Int(仕入額.Text) + Int(送料.Text) + Int(梱包資材費.Text) + Int(手数料.Caption))
+        Else
+            純利益.Caption = ""
+        End If
+    Else
+        手数料.Caption = ""
+    End If
+End If
+End Sub
+
+'文字数制限
+Function strCheck(alarm, str, num)
+    If Len(str) > num Then
+        str = Left(str, num)
+        If alarm = True Then
+            MsgBox num & "文字以内で入力して下さい。"
+        End If
+        strCheck = str
+    Else
+        strCheck = str
+    End If
+End Function
+
+'未使用
+'数字以外を除外
+Function numCheck(str)
+
+If Len(str) = 0 Then Exit Function
+
+For i = Len(str) To 1 Step -1
+    '文字が数字以外の場合
+    If IsNumeric(Mid(str, i, 1)) = False Then
+        '数字以外の文字を削除
+        str = Replace(str, Mid(str, i, 1), "")
+    End If
+Next
+
+numCheck = str
+End Function
+
+'未使用
+'日付以外除外
+Function dayCheck(day)
+If eventFlag = True Then
+    '範囲を指定して8ケタを認識
+  If day >= 20000101 And day <= 20991231 Then
+    dayCheck = Format(DateSerial(Left(day, 4), Mid(day, 5, 2), Right(day, 2)), "yyyy/mm/dd")
+  Else
+    dayCheck = day
+  End If
+Else
+    dayCheck = day
+End If
+End Function
+
+Private Sub 並び順_Change()
+    Call orderChange(並び順.Value, "")
+End Sub
+
+Private Sub 昇降_Change()
+    Call orderChange("", 昇降.Text)
+End Sub
+
+Private Sub orderChange(order, updown)
+
+If 並び順.Text <> "" And 昇降.Text <> "" Then
+    If order = "" Then order = 並び順.Text
+    If updown = "" Then updown = 昇降.Text
+    Select Case order
+        Case "ID"
+            order = "A"
+        Case "入力種別"
+            order = "B"
+        Case "完了日"
+            order = "H"
+        Case "作成日"
+            order = "P"
+        Case "更新日"
+            order = "Q"
+        Case "商品名"
+            order = "C"
+        Case "販売価格"
+            order = "I"
+    End Select
+
+    Select Case updown
+        Case "昇順"
+            updown = xlAscending
+        Case "降順"
+            updown = xlDescending
+    End Select
+
+    With Sheets("売上表")
+        .Range("A1").Sort key1:=.Range("A1"), order1:=xlDescending, Header:=xlYes
+        .Range("A1").Sort key1:=.Range(order & "1"), order1:=updown, Header:=xlYes
+    End With
+
+    Call InitialSetting
+End If
+
+End Sub
+' 取引ステータス
+Private Sub 取引ステータス_Change()
+Dim xData
+
+If eventFlag = True Then
+    xData = ItemSearch(取引ステータス.Text, 5, data)
+    xData = ItemSearch(検索.Text, 3, xData)
+    ListBox1.List = xData
+End If
+
+End Sub
+'検索
+Private Sub Search_Click()
+Dim xData
+
+    xData = ItemSearch(取引ステータス.Text, 5, data)
+    xData = ItemSearch(検索.Text, 3, xData)
+    ListBox1.List = xData
+
+End Sub
+'絞り込み
+Private Function ItemSearch(str, num, changeData)
+Dim i As Long, cn As Long
+Dim ItemData()
+
+cn = 0
+
+If num = 5 And 取引ステータス.Text = "全て" Or num = 3 And 検索.Text = "" Then
+    ItemSearch = changeData
+    Exit Function
+End If
+
+For i = LBound(changeData) To UBound(changeData)
+    If changeData(i, num) Like "*" & str & "*" Then
+        cn = cn + 1
+    End If
+Next i
+
+If cn = 0 Then
+    ReDim ItemData(0)
+    ItemData(0) = "NoData"
+    ItemSearch = ItemData
+    Exit Function
+Else
+    ReDim ItemData(1 To cn + 1, LBound(changeData, 2) To UBound(changeData, 2))
+    cn = 0
+    For i = LBound(changeData) To UBound(changeData)
+        If i = 1 Or changeData(i, num) Like "*" & str & "*" Then
+            cn = cn + 1
+            For j = LBound(changeData, 2) To UBound(changeData, 2)
+                ItemData(cn, j) = changeData(i, j)
+            Next j
+        End If
+    Next i
+End If
+
+ItemSearch = ItemData
+
+End Function
